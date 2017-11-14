@@ -1,0 +1,10 @@
+#!/bin/bash
+
+if [ $# -le 3 ]; then
+        echo "Usage: "$0" <key_file> <file.crt> <CA_certificate> <file.p12>"
+	exit 1
+fi
+
+openssl pkcs12 -export -in $2 -inkey $1  -certfile $3 -out $4 
+
+exit 0

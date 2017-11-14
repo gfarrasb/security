@@ -1,0 +1,17 @@
+#!/bin/bash
+
+if [ $# -le 2 ]; then
+	echo "Usage: "$0" <file.csr> <file.crt> <config_file>"
+	echo "or"
+	echo "Usage: "$0" <file.csr> <file.crt> <config_file> <extensions_section>"
+	exit 1
+fi
+
+if [ $# -le 3 ]; then
+	openssl ca -config $3 -out $2 -infiles $1 
+	exit 0
+fi
+
+openssl ca -config $3 -out $2 -extensions $4 -infiles $1 
+
+exit 0

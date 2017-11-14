@@ -1,0 +1,8 @@
+En aquesta carpeta hi he deixat els fitxers .form generats a través del programa NetBeans
+que implementen les diferents inferfícies d'usuari.
+
+El mateix programa, a partir d'aquí, generava la classe en Java a partir d'aquests fitxers .form.
+
+NetBeans és programari lliure i és gratuït, així que pot descarregar-se a través de l'adreça següent:
+
+http://www.netbeans.org/

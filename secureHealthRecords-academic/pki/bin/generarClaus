@@ -1,0 +1,20 @@
+#!/bin/bash
+
+if [ $# -le 1 ]; then
+	echo "Usage: "$0" <key_file> <key_length>"
+	echo "or"
+	echo "Usage: "$0" <key_file> <key_length> <random_file_length>"
+	exit 1
+fi
+
+if [ $# -eq 2 ]; then
+	openssl genrsa -des3  -out $1 $2 
+	exit 0
+fi
+
+echo getting random bytes
+head -c $3 /dev/random > aleatori
+echo creating key pair
+openssl genrsa -des3  -rand aleatori -out $1 $2
+
+exit 0

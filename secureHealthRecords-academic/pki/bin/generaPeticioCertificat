@@ -1,0 +1,10 @@
+#!/bin/bash
+
+if [ $# -le 2 ]; then
+	echo "Usage: "$0" <key_file> <file.csr> <config_file>"
+	exit 1
+fi
+
+openssl req -new -sha1 -config $3 -key $1 -out $2 
+
+exit 0

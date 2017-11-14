@@ -1,0 +1,10 @@
+#!/bin/bash
+
+if [ $# -le 2 ]; then
+	echo "Usage: "$0" <key_file> <file.crt> <dies>"
+	exit 1
+fi
+
+openssl req -new -sha1 -x509  -key $1 -out $2 -days $3
+
+exit 0
