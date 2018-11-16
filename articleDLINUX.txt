@@ -1,0 +1,389 @@
+UTILIDADES Y TÉCNICAS PARA LA DETERMINACIÓN DEL S.O. DE UN HOST REMOTO
+
+		Creado por Gerard Farrás para la revista DLinux edición española
+		Podeis enviar vuestras sugerencias y críticas a gerard.farras@campus.uab.es
+
+	0. ÍNDICE
+	1. PRÓLOGO
+	Por qué es interesante la determinación del sistema operativo que ejecuta un host remoto?
+	2. TÉCNICAS PARA SU DETERMINACIÓN
+	2.1. Técnicas antiguas
+		2.1.1. Banner de telnet
+		2.1.2. Servidores web
+		2.1.3. Otras sutilezas
+	2.2. Técnicas modernas
+		2.2.1. Fingerprinting a través del protocolo TCP
+		2.2.2. Fingerprinting a través del Protocolo ICMP
+	3. APLICACIONES VARIAS
+		3.1. Queso
+			3.1.1. Historia
+			3.1.2. Descarga y Compilación
+			3.1.3. Funcionamiento
+		3.2. Nmap
+			3.2.1. Descarga y Compilación (también en modo gráfico).
+			3.2.2  Funcionamiento
+		3.3  Xprobe
+		      3.3.1. Descarga y Compilación
+			3.3.2. Funcionamiento
+	4. COMO ENGAÑAR A ESTOS PROGRAMAS.
+	5. DOCUMENTOS Y LINKS.
+
+	1. PRÓLOGO
+
+	En este artículo vamos a comentar distintos programas que pueden ser libremente utilizados en un sistema operativo Linux que intentan determinar, mediante distintas técnicas, el sistema operativo (S.O.) que está ejecutando un host remoto.
+	La determinación del S.O. y también de los servicios que están siendo ejecutados en un host es muy importante para la realización de auditorias informáticas. Sin embargo, esta misma información también es utilizada para gente menos escrupulosa y con fines más sospechosos...
+	Muchos bugs (errores de código) se descubren cada día en distintas aplicaciones servidoras (como servidores web,	servidores de correo, etc...). Algunos de estos son "exploit"ables remotamente y pueden permitir al atacante un acceso no autorizado a nuestro servidor (e incluso algunos como root!).
+	Sin embargo, muchos de estos exploits, son dependientes del S.O. adyacente del host remoto. Así, la determinación del S.O. es vital para saber si un exploit puede funcionar o no.
+	Vamos a ver, primero, cuales son las técnicas que históricamente han sido más utilizadas para éste propósito, y como, a partir de un programa español (QueSO) se dio un paso adelante en el descubrimiento de otras técnicas.
+
+	2. TÉCNICAS PARA SU DETERMINACIÓN
+
+	2.1. Técnicas antiguas.
+
+	Históricamente, la detección del sistema operativo remoto, se hacía con métodos lentos y sospechosos...
+
+		2.1.1. Banner de telnet.
+	Por ejemplo,
+
+		++++++++++ INICIO CÓDIGO ++++++++++
+				telnet Hercules
+				Trying 192.168.1.1....
+				Connected to Hercules
+				Escape character is '^]'.
+
+				Debian GNU Linux 3.0 (2.4.18)
+
+				Hercules login:
+		++++++++++ FIN CÓDIGO ++++++++++
+
+	Así, averiguamos que Hércules es una máquina Linux con Debian 3.0 y Kernel 2.4.18. Fácil no?
+	Sin embargo, nadie impide que el administrador de este sistema nos engañe modificando el fichero /etc/issue.net, y escribiendo, por ejemplo:
+
+			++++++++++ INICIO CÓDIGO ++++++++++
+				Hercules SunOS 5.8.
+
+				Hercules login:
+			++++++++++ FIN CÓDIGO ++++++++++
+
+		2.1.3. Servidores web.
+
+	También podemos encontrar pistas, con la ayuda del servidor de páginas web.
+	Por ejemplo,
+		++++++++++ INICIO CÓDIGO ++++++++++
+				telnet Zeus 80
+				Trying 192.168.1.2
+				Connected to Zeus.
+				Escape carácter is ´^]´
+				GET / HTTP/1.0
+
+				HTTP/1.1 200 OK
+				Date: Tue, 03 Sep 2002 12:30:34 GMT
+				Server: Apache/1.3.26 (Unix) PHP/4.2.2
+				etc...
+		++++++++++ FIN CÓDIGO ++++++++++
+
+	La línea Server: puede darnos mucha información valiosa sobre el servidor en cuestión. En este caso, Zeus es una máquina Unix con el servidor web Apache versión 1.3.26 y con el módulo PHP 4.2.2 incorporado.
+
+	De la misma forma, podríamos descubrir máquinas con servidores web distintos. Por ejemplo, Server: Microsoft-IIS/5.0.
+
+	Con el fantástico servidor gratuito Apache, podemos mostrar menos información con la directiva ServerTokens en el fichero de configuración httpd.conf.
+
+	Vamos a ver qué se envía en la línea Server con las distintas opciones:
+
+ServerTokens ProductOnly	Server: Apache
+ServerTokens Minimal		Server: Apache/1.3.0
+ServerTokens OS			Server: Apache/1.3.0 (Unix)
+ServerTokens Full			Server: Apache/1.3.0 (Unix) PHP/3.0 MyMod/1.2
+
+	Además, con Apache, el administrador del sistema podría recompilarlo para que la línea Server: fuera algo como:
+
+			Server: MiServidorWeb/Versión: 0.1
+
+	Debo advertir que en la FAQ de Apache no recomiendan hacer esto, ya que no mejora sustancialmente la seguridad del servidor (ésta técnica de seguridad se basaría en "security through obscurity" ya que intenta aumentar la seguridad  mediante el engaño y no con un modelo de seguridad abierto. Este tema es muy debatido en los círculos de seguridad informática).
+
+	Aunque esto, como he dicho, no es recomendable, voy a explicar como podemos hacerlo, simplemente como curiosidad (para la versión de Apache 1.3.26 (y parecido para las 1.3.X)).
+	Debemos obtener el código fuente de Apache (si no lo tenemos ya), y recompilarlo con las modificaciones siguientes en el código:
+
+			++++++++++ INICIO CÓDIGO ++++++++++
+	1) Debemos modificar src/include/httpd.h, ir a la línea 431, y cambiar las líneas siguientes:
+
+	#define SERVER_BASEVERSION SERVER_BASEPRODUCT "/" SERVER_BASEREVISION
+	#define SERVER_VERSION SERVER_PRODUCT "/" SERVER_REVISION
+
+	por la siguientes
+
+	#define SERVER_BASEVERSION  "MiServidorWeb/Versión: 0.1"
+	#define SERVER_VERSION  SERVER_BASEVERSION
+
+	2) Modificar src/main/http_main.c	línea 413
+
+	 Cambiar la rutina:
+
+	 API_EXPORT(const char *) ap_get_server_version(void)
+	 {
+ 		return (server_version ? server_version : SERVER_BASEVERSION);
+	 }
+
+	 por esta otra:
+
+	API_EXPORT(const char *) ap_get_server_version(void)
+	{
+    		return SERVER_BASEVERSION;
+	}
+			++++++++++ FIN CÓDIGO ++++++++++
+
+	Ahora, cuando hagamos:
+
+		++++++++++ INICIO CÓDIGO ++++++++++
+				telnet Zeus 80
+				Trying 192.168.1.2...
+				Connected to Zeus
+				Escape character is ´^]´
+   				GET / HTTP/1.0                                                                      
+				HTTP/1.1 200 OK
+				Date: Tue, 03 Sep 2002 12:30:34 GMT
+				Server: MiServidorWeb/1.0
+				etc...
+		++++++++++ FIN CÓDIGO ++++++++++
+
+		2.1.2. Otras sutilezas.
+
+	Analizando los banners de otros programas servidores también podemos encontrar información muy útil.
+	Por ejemplo,
+		++++++++++ INICIO CÓDIGO ++++++++++
+			telnet Zeus 21
+			Trying 192.168.1.1...
+			Connected to Zeus
+			Escape character is '^]'.
+			220 Zeus.localhost FTP server (Version wu-2.4.2-academ[BETA-18](1) Tue Dec 7
+ 12:36:28 GMT 1999) ready.
+			syst
+			215 UNIX Type: L8
+		++++++++++ FIN CÓDIGO ++++++++++
+
+	Sabremos que Zeus es la variante de un Unix con la versión del servidor FTP wu-2.4.2.
+	También podemos hacerlo estudiando los mensajes de otros como smtp, pop, imap, finger, o con utilidades como rpcinfo, etc…
+	Otra técnica que fue utilizada era bajarse programas (como ls) del servidor ftp público (si estaba disponible) y averiguar para qué plataforma estaba compilado.
+
+	2.2. Técnicas modernas.
+
+		2.2.1. Fingerprinting a través del protocolo TCP.
+
+	Savage, del desaparecido grupo Apostols, empezó, en Abril del 97 un programa capaz de diferenciar entre un Linux y un Windows mediante el envío de paquetes TCP a puertos del equipo remoto. El método consiste en enviar todo un conjunto de paquetes TCP (algunos de "raros", con configuraciones sin sentido) y estudiar sus respuestas.
+	Debido a que en alguno de estos casos raros, la respuesta no es homogénea entre todos los sistemas (debido a que cada cual lo ha implementado diferente, y puede que algunos casos no estén completamente estandarizados), podremos diferenciar varios sistemas operativos. Para saber qué S.O. es, compararemos las respuestas de las pruebas con una base de datos con las "huellas" (fingerprinting) de los sistemas operativos conocidos.
+	Para que el lector pueda comprender exactamente el funcionamiento de estas técnicas, se debe conocer perfectamente el protocolo de Internet: TCP/IP. Hay, en la red, toda la información necesaria para su comprensión.
+
+		2.2.2. Fingerprinting a través del protocolo ICMP.
+
+	ICMP (Internet Control Message Protocol) es un protocolo que funciona con datagramas IP, y trata y controla estos mismos paquetes IP. Me explico: la información que se transmite en este protocolo viaja en paquetes IP. Y la información que transmite se refiere al funcionamiento y la entrega de los paquetes IP.
+	Por ejemplo, imaginemos que intentamos conectar con un servidor de internet www.unhostremoto.com. Mi ordenador intentará hacer una petición de conexión a unhostremoto.com enviando ciertos paquetes IP's. Pero da la casualidad que se ha ido la luz en el edificio de unhostremoto.com y este ordenador no funciona. Así, cuando el último host que debería entregar nuestros paquetes al hostremoto caído, entiende que éste no responde, nos enviará un paquete ICMP diciendo que el destino es “unreachable”. Así vemos una de las utilizaciones de ICMP: especificar códigos de error.
+	Otro ejemplo de este protocolo, es la archiconocida utilidad ping.
+	Ping es un programa presente en todas las distribuciones Linux, que envía un paquete ICMP (ECHO_REQUEST), esperando que la máquina destino envíe un ECHO_RESPONSE. Con ping podemos saber si tenemos posibilidad de conexión con el hostremoto, también cuanto tiempo tardan en llegar los mensajes (descubriendo si la red está muy cargada, etc…).
+	Igual que en el caso de TCP, se puede hacer el fingerprinting de varios sistemas operativos debido a malas implementaciones del protocolo, o debido a sistemas antiguos donde el protocolo no ha sido actualizado (debido a peticiones de RFC's más modernos).
+
+	3. PROGRAMAS VARIOS.
+
+		3.1. Queso.
+
+			3.1.1. Historia
+
+         Este programa fue uno de los primeros en hacer esta tarea. De ahí viene su nombre: Qué S.O. Fue desarrollado por el grupo español de www.apostols.org (desaparecido ya).
+         Aunque este programa fue muy interesante en su día, a sido ampliamente superado por Nmap (sección siguiente) y su mención aquí es puramente histórica.
+
+         3.1.2. Descarga y Compilación
+
+         Si utilizamos Debian, podemos instalarlo simplemente, siendo root con:
+
+			# apt-get install queso
+
+	Si no, podemos descargarlo e instalarlo de la forma siguiente:
+		
+			++++++++++ INICIO CÓDIGO ++++++++++
+         wget
+http://ftp.cerias.purdue.edu/pub/tools/unix/scanners/queso/queso-980922.tar.gz
+         gzip -d -c queso-980922.tar.gz | tar xvvf -
+				cd queso-980922
+				./configure
+				make
+				su
+				make install
+			++++++++++ FIN CÓDIGO ++++++++++
+	
+         3.1.3. Funcionamiento
+
+         Ejemplo de utilización: En mi red interna, Zeus corre un Linux con Kernel 2.2.16:
+			++++++++++ INICIO CÓDIGO ++++++++++
+				# /usr/sbin/queso Zeus
+				192.168.1.2:80  * Linux 2.1.xx/2.2.xx
+			++++++++++ FIN CÓDIGO ++++++++++
+	Acierta!
+
+         El fichero queso.conf, contiene una base de datos con los distintos sistemas operativos conocidos	seguidos de la respuesta que dan a ciertos paquetes TCP.
+         Con la opción -d se pueden ver algunas características de los paquetes TCP/IP recibidos en nuestra máquina	(puertos, números de secuencia, window size, flags tcp, entre otros...)
+         Si lo intentamos con Hércules (Linux Kernel 2.4.18), vemos, como Queso ha quedado un poco "desfasado":
+			++++++++++ INICIO CÓDIGO ++++++++++
+			# /usr/sbin/queso Hercules
+			192.168.1.1:80  * Standard: Solaris 2.x, Linux 2.1.???, MacOS
+			++++++++++ FIN CÓDIGO ++++++++++
+
+         Podríamos actualizar Queso, añadiendo nuevos sistemas operativos en el fichero Queso.conf. Los pasos para hacerlo son los siguientes:
+	(1)	Averiguar qué paquetes envía Queso a los hosts remotos para encontrar su huella.
+	(2)	Enviar estos mismos paquetes con un programa tipo hping2 al ordenador del cual ya conocemos su sistema operativo.
+	(3)	Estudiar las respuestas y añadir la huella del sistema operativo en queso.conf.
+
+         3.2. Nmap
+
+         3.2.1. Descarga y Compilación (también en modo gráfico).
+
+         Obtener e instalar nmap es realmente fácil.
+         Para los que utilicen Debian:
+
+		++++++++++ INICIO CÓDIGO ++++++++++
+			apt-get install nmap
+			apt-get install nmapfe #(opcionalmente, el entorno gráfico).
+		++++++++++ FIN CÓDIGO ++++++++++
+
+         Para los que utilicen el sistema de paquetes de RedHat en su sistema operativo:
+		++++++++++ INICIO CÓDIGO ++++++++++
+         rpm -vhU http://download.insecure.org/nmap/dist/nmap-3.00-1.i386.rpm
+         rpm -vhU http://download.insecure.org/nmap/dist/nmap-frontend-3.00-1.i386.rpm #(opcionalmente, el entorno gráfico).
+		++++++++++ FIN CÓDIGO ++++++++++
+
+         Si no es ninguno de los dos casos anteriores: Compilamos el programa nosotros mismos:
+
+		++++++++++ INICIO CÓDIGO ++++++++++
+		wget http://download.insecure.org/nmap/dist/nmap-3.00.tgz
+		gzip -d -c nmap-3.00.tgz | tar xvvf -
+		cd nmap-3.00
+		./configure
+		make
+		su root
+		make install
+		++++++++++ FIN CÓDIGO ++++++++++
+         
+         Nmap está disponible para varios sistemas operativos, incluso para Windows.
+	
+         3.2.2  Funcionamiento
+
+	Nmap es un programa muy completo: Su función principal es como escaneador de puertos (o sea, detecta cuales son los puertos del host remoto que están a la escucha, esperando conexiones remotas). Para hacer esta tarea tiene distintas técnicas, algunas simples y fácilmente detectables y otras más sutiles	y discretas que sólo pueden utilizarse como root. Para conocer las distintas técnicas y todas las opciones de nmap, consultar la magnífica documentación que trae consigo (man nmap).
+
+	La opción que nos interesa aquí, es la de la detección del sistema operativo: -O. Vamos a ver un ejemplo,
+
+		++++++++++ INICIO CÓDIGO ++++++++++
+		Hercules# nmap -O Zeus
+		Starting nmap V. 2.54BETA31 ( www.insecure.org/nmap/ )
+		Interesting ports on Zeus (192.168.1.2):
+		(The 1550 ports scanned but not shown below are in state: closed)
+		Port       State       Service
+		21/tcp     open        ftp
+		23/tcp     open        telnet
+		80/tcp     open        http
+		3306/tcp   open        mysql
+
+		Remote operating system guess: Linux 2.1.19 - 2.2.19
+		Uptime 0.159 days (since Tue Sep  3 08:51:38 2002)
+
+		Nmap run completed -- 1 IP address (1 host up) scanned in 3 seconds
+		++++++++++ FIN CÓDIGO ++++++++++
+	
+	Vemos que afina muchísimo en cuanto a la detección del Kernel.
+
+	Podemos hacer que nos muestre más información de los paquetes recibidos utilizando dos veces la opción verbose (-v -v):
+
+		++++++++++ INICIO CÓDIGO ++++++++++
+		Remote operating system guess: Linux 2.1.19 - 2.2.19
+		OS Fingerprint:
+		TSeq(Class=RI%gcd=1%SI=2E48A5%IPID=I%TS=100HZ)
+		T1(Resp=Y%DF=Y%W=7F53%ACK=S++%Flags=AS%Ops=MENNTNW)
+		T2(Resp=N)
+		T3(Resp=Y%DF=Y%W=7F53%ACK=S++%Flags=AS%Ops=MENNTNW)
+		T4(Resp=Y%DF=N%W=0%ACK=O%Flags=R%Ops=)
+		T5(Resp=Y%DF=N%W=0%ACK=S++%Flags=AR%Ops=)
+		T6(Resp=Y%DF=N%W=0%ACK=O%Flags=R%Ops=)
+		T7(Resp=Y%DF=N%W=0%ACK=S%Flags=AR%Ops=)
+	PU(Resp=Y%DF=N%TOS=C0%IPLEN=164%RIPTL=148%RID=E%RIPCK=E%UCK=E%ULEN=134%DAT=E)
+		Uptime 0.024 days (since Mon Sep  9 20:02:40 2002)
+		TCP Sequence Prediction: Class=random positive increments
+    		Difficulty=3033253 (Good luck!)
+		TCP ISN Seq. Numbers: 60A4474A 60FD6965 61594526 614C0AC1 60B6056D 60E43345
+		IPID Sequence Generation: Incremental
+		++++++++++ FIN CÓDIGO ++++++++++
+
+	Estos datos resultantes los compara con los "fingerprints" de todos los sistemas conocidos del fichero nmap-os-fingerprints (ubicado en usr/share/nmap?) y determina de qué sistema operativo se trata.
+
+		3.3.	Xprobe
+
+	Xprobe es una aplicación que solamente utiliza paquetes ICMP.
+	La ventaja de Xprobe es que no es tan dependiente del protocolo TCP y además, utiliza muchos menos paquetes que los anteriores para hacer el fingerprinting del sistema operativo remoto.
+	Atención: Para poder ejecutar Xprobe, debemos tener privilegios de root.
+
+		3.3.1. Descarga y Compilación
+
+	En Debian:	#apt-get install xprobe	(Se nota que soy debianero?)
+
+	Si queremos compilar nosotros directamente el código fuente, vamos a necesitar la librería libpcap.
+
+
+		++++++++++ INICIO CÓDIGO ++++++++++
+			wget http://www.sys-security.com/archive/tools/X/xprobe-0.0.2.tar.gz
+			gzip -d -c xprobe-0.0.2.tar.gz | tar xvvf -
+			cd xprobe-0.0.2
+	./configure --with-libpcap-libraries=/directorio con librería libpcap  --with-libpcap-includes=/directorio con includes de libpcap
+			make
+			su
+			make install
+		++++++++++ FIN CÓDIGO ++++++++++
+
+		3.3.2. Funcionamiento
+
+		++++++++++ INICIO CÓDIGO ++++++++++
+			# xprobe -v Zeus
+			X probe ver. 0.0.2
+			------------------
+			Interface: eth0/192.168.1.1
+
+			LOG: Target: 192.168.1.2
+			LOG: Netmask: 255.255.255.255
+			LOG: probing: 192.168.1.2
+			LOG: [send]-> UDP to 192.168.1.2:32132
+			LOG: [98 bytes] sent, waiting for response.
+			TREE: Cisco IOS 11.x-12.x! Extreme Network Switches.Linux 2.0.x!2.2.x!2.4.x.
+			TREE: Linux kernel 2.0.x!2.2.x!2.4.x! Based.
+			TREE: Linux kernel 2.2.x!2.4.x! Based.
+			LOG: [send]-> ICMP echo request to 192.168.1.2
+			LOG: [68 bytes] sent, waiting for response.
+			TREE: ICMP echo/echo reply are not filtered
+			FINAL:[ Linux 2.2.x/2.4.5+ kernel ]
+		++++++++++ FIN CÓDIGO ++++++++++
+
+	Xprobe recorre un árbol de sistemas operativos, ejecutando pruebas hasta llegar a una hoja.
+
+	4. ENGAÑAR A ESTOS PROGRAMAS.
+
+	Pero... nada es infalible, los programas descritos anteriormente basados en el "fingerprinting" de la capa de red del host remoto, pueden ser engañados. Conceptualmente, el engaño es sencillo: modificamos la capa de red del Kernel, y especificamos cómo se debe responder ante determinados paquetes “raros”. Así, podemos cambiar las huellas de nuestro sistema operativo y... parecernos a otro!
+
+	El proyecto IP Personality añade al Kernel 2.4 de Linux la habilidad de tener distintas "personalidades" en una red. Además, es totalmente configurable, por ejemplo, tomando de base mi red casera, Hércules puede ser un Windows para Zeus y un Solaris para Perséfone, dependiendo de distintos parámetros: origen y destino de la dirección IP, el puerto TCP o UDP, etc…
+
+	No voy a entrar en detalle en este artículo sobre como instalar y configurar IPPersonality debido a su complejidad ya que debemos conocer el funcionamiento de iptables y de los módulos del Kernel, aunque creo que podría ser un buen ejercicio su instalación y configuración, y luego, jugar con nmap para ver qué sistema operativo detecta.
+
+	Para engañar o inutilizar Xprobe (la aplicación que utiliza solamente ICMP), podemos aprovecharnos de algunas características del kernel 2.4 de Linux. Por ejemplo, podemos hacer que nuestra máquina no responda a ningún ping (ICMP ECHO_REQUEST), ejecutando lo siguiente como root:
+
+		++++++++++ INICIO CÓDIGO ++++++++++
+         echo 1 > /proc/sys/net/ipv4/icmp_echo_ignore_all
+		++++++++++ FIN CÓDIGO ++++++++++
+         
+         De la misma manera podemos utilizar otros archivos similares como icmp_echo_ignore_broadcasts o icmp_ignore_bogus_error_responses.
+
+         4. DOCUMENTOS Y LINKS.
+
+	ARTÍCULOS RELACIONADOS:
+		http://www.insecure.org/nmap/nmap-fingerprinting-article-mx.html
+		http://www.phrack.org/show.php?p=57&a=7
+
+	APLICACIONES:
+		Nmap			 http://www.insecure.org/nmap/
+		Xprobe 		 http://xprobe.sourceforge.net/
+		IpPersonality 	 http://ippersonality.sourceforge.net/
+            Hping 2  		 http://www.eaglenet.org/antirez/hping2.html
+
+
